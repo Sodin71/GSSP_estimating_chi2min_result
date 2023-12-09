@@ -68,8 +68,14 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
     root_ylim_real = root_ylim[np.isreal(root_ylim)]
     possible_X_range = np.real(root_ylim_real[(root_ylim_real < np.max(x)) & (root_ylim_real > np.min(x))])
     diff_X = possible_X_range - solX
-    error = [np.min(diff_X), np.max(diff_X)]
     
+    if len(diff_X) == 2: error = [np.min(diff_X), np.max(diff_X)]  
+    elif len(diff_X) ==1:
+        if diff_X[0] >= 0: error = [np.nan, diff_X[0]]
+        else: error = [diff_X[0], np.nan]
+    else: 
+        error = [np.nan, np.nan] 
+        print('       WARNING!!: cannot estimate the errors')
     
     # create a result figure
     x_c_add = (np.max(x)-np.min(x))*0.1
