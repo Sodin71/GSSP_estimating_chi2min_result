@@ -5,7 +5,7 @@ Created on Thu Dec  7 22:02:42 2023
 @author: JeongMJ (mjj0055@hanmail.net, chungbuk national university)
 
 This program is for estimating results from the grid-search result file of GSSP.
-ver. 0.0
+ver. 0.1 (23.01.04)
 
 """
 
@@ -61,6 +61,10 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
     root = np.roots(dfx1)
     root_real = root[np.isreal(root)]
     solX = np.real(root_real[(root_real < np.max(x)) & (root_real > np.min(x))])
+    if len(solX) == 0 : 
+        print('    WARNING!!: Cannot determine the result for %s. > result figure was not created'%xlabel)
+        print('               (Polyfit may be poorly conditioned)')
+        return np.nan, [np.nan, np.nan] 
     
     # x range, smaller than 1-sigma, to estimate the error
     gx = fx - ylim
@@ -68,14 +72,16 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
     root_ylim_real = root_ylim[np.isreal(root_ylim)]
     possible_X_range = np.real(root_ylim_real[(root_ylim_real < np.max(x)) & (root_ylim_real > np.min(x))])
     diff_X = possible_X_range - solX
-    
+    #print(possible_X_range, root_ylim_real)
     if len(diff_X) == 2: error = [np.min(diff_X), np.max(diff_X)]  
     elif len(diff_X) ==1:
         if diff_X[0] >= 0: error = [np.nan, diff_X[0]]
         else: error = [diff_X[0], np.nan]
     else: 
         error = [np.nan, np.nan] 
-        print('       WARNING!!: cannot estimate the errors')
+        print('    WARNING!!: Cannot estimate the errors for %s'%xlabel)
+        if fx(solX) > ylim:
+            print('           (Estimated minimum Chi2, %.4f, by polyfit is larger than 1sigma, %.4f)'%(fx(solX),ylim))
     
     # create a result figure
     x_c_add = (np.max(x)-np.min(x))*0.1
@@ -86,8 +92,9 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
     plt.plot(x,y,'o')
     plt.plot(x_c, y_c,'-k')
     plt.axvline(solX, c ='red', ls = '-', label = 'minimum point')
-    plt.axvline(possible_X_range[0], c ='gray', ls = '-')
-    plt.axvline(possible_X_range[1], c ='gray', ls = '-')
+    for n in range(len(error)):
+        if not np.isnan(error[n]): plt.axvline(error[n] + solX, c ='gray', ls = '-')
+    #plt.axvline(error[1] + solX, c ='gray', ls = '-')
     plt.axhline(ylim, c ='gray', ls = ':', label = r'1-$\sigma$')
     plt.title(r'%s = $%.4f_{%.4f}^{+%.4f}$'%(xlabel, solX, error[0], error[1]))
     plt.xlabel(xlabel)
@@ -98,8 +105,7 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
     plt.show()
     
     
-    # save the results
-    
+    # save the results    
     f = open('%s.txt'%savename,'w')
     f.write('# %s\n'%time.strftime("%Y-%m-%d %H:%M:%S"))
     f.write('# dimension  = %.0f\n'%dimension)
@@ -120,7 +126,7 @@ def get_val_err_with_polyfitting(x, y, ylim, dimension = 3, savename = 'result',
 
 
 
-def main(input_file, work_parameters = []):
+def main(input_file, work_parameters = [], dimension = 3):
     
     chi2_lab = 'reduced_chi2'
     
@@ -133,23 +139,30 @@ def main(input_file, work_parameters = []):
     
     # run for each parameter
     result = {} # make directory for saving results
+    print(' > Estimate the results using dimension %.0f'%dimension)
+    print()
     for param in work_parameters:
-        
+        print('   ** running:: %s'%param)
         # find minimum chi2
         MINchi_val = get_min_chi2(data, param, chi2_lab)
         if len(MINchi_val[param]) == 1:            
-            print('  - %s = %.4f (fixed)'%(param, MINchi_val[param]))
-            print('       WARNING!!: %s was fixed > result figure was not created'%(param))
+            print('     - %s = %.4f (fixed)'%(param, MINchi_val[param]))
+            print('    WARNING!!: %s was fixed > result figure was not created'%(param))
             result[param] = {'val': MINchi_val[param], 'error': [0.,0.]}
+            print()
             continue
         
         # get estimated value and its error
         param_val, param_err = get_val_err_with_polyfitting(MINchi_val[param], MINchi_val[chi2_lab], chi2_1sig, 
-                                                      savename = param, x_ref = data[param], y_ref = data[chi2_lab], 
-                                                      xlabel = param, ylabel = r'$\chi^2$')
-        print('  - %s = %.4f [%.4f, +%.4f]'%(param, param_val, param_err[0], param_err[1]))
+                                                            dimension = dimension, 
+                                                            savename = param, x_ref = data[param], y_ref = data[chi2_lab], 
+                                                            xlabel = param, ylabel = r'$\chi^2$')
+        print('     - %s = %.4f [%.4f, +%.4f]'%(param, param_val, param_err[0], param_err[1]))
         # save the results in dictionary
         result[param] = {'val': param_val, 'error': param_err}
+        print()
+        
+    print()
     
 
 if __name__ == "__main__":
@@ -158,10 +171,12 @@ if __name__ == "__main__":
     filename = 'Chi2_table.dat'
     
     # 2. put the parameter. It should be the list! select: ['MH','Teff','logg','micro_turbulence','vsini']
-    work_parameters = ['MH','Teff','logg','micro_turbulence','vsini'] 
+    work_parameters = ['MH','Teff','vsini','logg','micro_turbulence'] 
     
-    # run ...  Polynomial fitting to estimate parameters is performed with dimension 3 (default).    
+    # run ...  Polynomial fitting to estimate parameters is performed with dimension 3 (default).  
+    # main(filename, work_parameters)
     # If you want to change the dimension, add dimension = any value as follow:
     # main(filename, work_parameters, dimension = 5)
     
-    main(filename, work_parameters)
+    main(filename, work_parameters, dimension = 4)
+    
